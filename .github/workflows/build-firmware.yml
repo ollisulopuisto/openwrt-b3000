@@ -42,15 +42,85 @@ jobs:
 
       - name: Configure build for GL-B3000
         run: |
-          # Select the target profile (qualcommax/ipq50xx for GL-B3000)
+          # --- Base Target Selection ---
           echo "CONFIG_TARGET_qualcommax=y" > .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_glinet_gl-b3000=y" >> .config
-          # Add any extra packages you want here, e.g.:
-          # echo "CONFIG_PACKAGE_luci=y" >> .config
-          # echo "CONFIG_PACKAGE_nano=y" >> .config
 
-          # Expand the config based on selections
+          # --- LuCI Web Interface ---
+          echo "CONFIG_PACKAGE_luci=y" >> .config                   # Core LuCI interface
+          # Choose ONE SSL option for HTTPS access to LuCI:
+          # echo "CONFIG_PACKAGE_luci-ssl=y" >> .config             # Uses built-in px5g library (smaller)
+          echo "CONFIG_PACKAGE_luci-ssl-openssl=y" >> .config       # Uses OpenSSL library (larger, potentially more compatible/robust)
+          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config          # LuCI interface for package management
+          echo "CONFIG_PACKAGE_luci-base=y" >> .config              # Ensure base LuCI files are included
+          echo "CONFIG_DEFAULT_luci-app-firewall=y" >> .config      # Firewall management page (essential)
+
+          # --- LuCI Themes ---
+          echo "CONFIG_PACKAGE_luci-theme-bootstrap=y" >> .config   # Default theme (include as fallback)
+          echo "CONFIG_PACKAGE_luci-theme-openwrt-2020=y" >> .config # Popular alternative theme
+
+          # --- Basic Utilities ---
+          echo "CONFIG_PACKAGE_nano=y" >> .config                   # Nano text editor
+          echo "CONFIG_PACKAGE_htop=y" >> .config                   # Process viewer
+
+          # --- Networking Core & Firewall ---
+          # These are usually default, but explicitly including them doesn't hurt
+          echo "CONFIG_PACKAGE_dnsmasq=y" >> .config                # Handles DHCP and DNS
+          echo "CONFIG_PACKAGE_firewall4=y" >> .config              # The current nftables-based firewall
+          echo "CONFIG_PACKAGE_iptables-nft=y" >> .config           # Compatibility layer for scripts expecting iptables syntax
+          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config        # IPv6 DHCP/RA server (common for home networks)
+          # Or use odhcp6c if you only need an IPv6 client: echo "CONFIG_PACKAGE_odhcp6c=y" >> .config
+
+          # --- SSH / SFTP ---
+          # Dropbear is the default SSH server, usually included.
+          # echo "CONFIG_PACKAGE_dropbear=y" >> .config             # Default SSH server
+          echo "CONFIG_PACKAGE_openssh-sftp-server=y" >> .config    # Adds SFTP support to Dropbear
+
+          # --- QoS / SQM ---
+          echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config            # Smart Queue Management core scripts
+          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config           # LuCI interface for SQM
+
+          # --- VPN ---
+          echo "CONFIG_PACKAGE_wireguard-tools=y" >> .config        # WireGuard userspace tools
+          echo "CONFIG_PACKAGE_kmod-wireguard=y" >> .config         # WireGuard Kernel Module
+          echo "CONFIG_PACKAGE_luci-app-wireguard=y" >> .config     # LuCI interface for WireGuard
+
+          # --- Guest Network ---
+          echo "CONFIG_PACKAGE_luci-app-guest-wifi=y" >> .config    # Simplified LuCI interface for guest networks (optional, can be done manually)
+
+          # --- IoT / Device Discovery ---
+          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config           # mDNS/DNS-SD daemon (for Bonjour/Avahi discovery)
+          # If you need the LuCI App for Avahi:
+          # echo "CONFIG_PACKAGE_luci-app-avahi=y" >> .config
+
+          # --- VoIP Support (Basic NAT Helpers) ---
+          # This is complex. These helpers MIGHT be enough, but often aren't. Full VoIP needs more setup.
+          echo "CONFIG_PACKAGE_kmod-nf-nathelper-extra=y" >> .config # Includes SIP and other ALG helpers (sometimes problematic)
+
+          # --- Potential Needs for NAS/RPi Interaction ---
+          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config       # Support for USB storage devices connected to the router
+          echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config           # EXT4 filesystem support (common for Linux)
+          echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config           # FAT32 filesystem support (for compatibility)
+          echo "CONFIG_PACKAGE_block-mount=y" >> .config            # Automounting block devices (like USB drives)
+
+          # --- Diagnostics / Monitoring ---
+          echo "CONFIG_PACKAGE_tcpdump=y" >> .config                # Network packet analyzer (useful for debugging)
+          echo "CONFIG_PACKAGE_iperf3=y" >> .config                 # Network performance testing tool
+          # For more advanced stats:
+          # echo "CONFIG_PACKAGE_luci-app-statistics=y" >> .config    # LuCI statistics interface
+          # echo "CONFIG_PACKAGE_collectd=y" >> .config             # Statistics collection daemon
+          # echo "CONFIG_PACKAGE_collectd-mod-cpu=y" >> .config
+          # echo "CONFIG_PACKAGE_collectd-mod-memory=y" >> .config
+          # echo "CONFIG_PACKAGE_collectd-mod-interface=y" >> .config
+          # echo "CONFIG_PACKAGE_collectd-mod-load=y" >> .config
+          # echo "CONFIG_PACKAGE_collectd-mod-network=y" >> .config
+
+          # --- UPnP (If needed for specific applications/gaming) ---
+          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config          # LuCI interface for UPnP / NAT-PMP
+
+          # --- Final Step ---
+          # Expand the config based on selections and resolve dependencies
           make defconfig
 
       - name: Download toolchain and sources
