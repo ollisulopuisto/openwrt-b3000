@@ -1,36 +1,39 @@
-name: Build OpenWrt Firmware (GL-B3000)
+name: Build OpenWrt Firmware (GL-B3000 from Dev Branch) # Renamed for clarity
 
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
     inputs:
+      # Input might not be needed if branch always builds GL-B3000, but keep for flexibility maybe?
       target_device:
-        description: 'Target Device Profile (e.g., glinet_gl-b3000)'
-        required: true
+        description: 'Target Device (from dev branch)'
+        required: false # No longer strictly required if branch defines it
         default: 'glinet_gl-b3000'
 
-  # Optional: Trigger on pushes to a specific branch in your fork
+  # Removed the push trigger as we're specifying the repo/branch below
   # push:
   #   branches:
-  #     - build-gl-b3000-pr17903 # Replace with the branch you pushed the merged code to
+  #     - build-gl-b3000-pr17903
 
 permissions:
   contents: read # Keep as read unless a step needs write access
 
 jobs:
   build:
-    name: Build firmware for ${{ github.event.inputs.target_device || 'glinet_gl-b3000' }}
+    name: Build firmware from TheRootED24/glinet_ipq50xx_dev
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout TheRootED24/openwrt dev branch # MODIFIED STEP
         uses: actions/checkout@v4
+        with:
+          repository: TheRootED24/openwrt           # Specify the developer's repo
+          ref: glinet_ipq50xx_dev                  # Specify the developer's branch
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           # Install essential build tools + python tools for newer Ubuntu/Debian
-          # Removed python3-distutils, added python3-setuptools, python3-venv, python3-dev
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
           python3-setuptools python3-venv python3-dev rsync unzip zlib1g-dev file wget
@@ -40,102 +43,26 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Configure build for GL-B3000
+      # --- REMOVED MANUAL CONFIGURATION STEP ---
+      # The configuration should come directly from the checked-out dev branch files.
+      # Keep 'make defconfig' to finalize the configuration based on the branch.
+      - name: Finalize configuration from branch
         run: |
-          # --- Base Target Selection ---
-          echo "CONFIG_TARGET_qualcommax=y" > .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
-          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_glinet_gl-b3000=y" >> .config
-
-          # --- LuCI Web Interface ---
-          echo "CONFIG_PACKAGE_luci=y" >> .config                   # Core LuCI interface
-          # Choose ONE SSL option for HTTPS access to LuCI:
-          # echo "CONFIG_PACKAGE_luci-ssl=y" >> .config             # Uses built-in px5g library (smaller)
-          echo "CONFIG_PACKAGE_luci-ssl-openssl=y" >> .config       # Uses OpenSSL library (larger, potentially more compatible/robust)
-          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config          # LuCI interface for package management
-          echo "CONFIG_PACKAGE_luci-base=y" >> .config              # Ensure base LuCI files are included
-          echo "CONFIG_DEFAULT_luci-app-firewall=y" >> .config      # Firewall management page (essential)
-
-          # --- LuCI Themes ---
-          echo "CONFIG_PACKAGE_luci-theme-bootstrap=y" >> .config   # Default theme (include as fallback)
-          echo "CONFIG_PACKAGE_luci-theme-openwrt-2020=y" >> .config # Popular alternative theme
-
-          # --- Basic Utilities ---
-          echo "CONFIG_PACKAGE_nano=y" >> .config                   # Nano text editor
-          echo "CONFIG_PACKAGE_htop=y" >> .config                   # Process viewer
-
-          # --- Networking Core & Firewall ---
-          # These are usually default, but explicitly including them doesn't hurt
-          echo "CONFIG_PACKAGE_dnsmasq=y" >> .config                # Handles DHCP and DNS
-          echo "CONFIG_PACKAGE_firewall4=y" >> .config              # The current nftables-based firewall
-          echo "CONFIG_PACKAGE_iptables-nft=y" >> .config           # Compatibility layer for scripts expecting iptables syntax
-          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config        # IPv6 DHCP/RA server (common for home networks)
-          # Or use odhcp6c if you only need an IPv6 client: echo "CONFIG_PACKAGE_odhcp6c=y" >> .config
-
-          # --- SSH / SFTP ---
-          # Dropbear is the default SSH server, usually included.
-          # echo "CONFIG_PACKAGE_dropbear=y" >> .config             # Default SSH server
-          echo "CONFIG_PACKAGE_openssh-sftp-server=y" >> .config    # Adds SFTP support to Dropbear
-
-          # --- QoS / SQM ---
-          echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config            # Smart Queue Management core scripts
-          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config           # LuCI interface for SQM
-
-          # --- VPN ---
-          echo "CONFIG_PACKAGE_wireguard-tools=y" >> .config        # WireGuard userspace tools
-          echo "CONFIG_PACKAGE_kmod-wireguard=y" >> .config         # WireGuard Kernel Module
-          echo "CONFIG_PACKAGE_luci-app-wireguard=y" >> .config     # LuCI interface for WireGuard
-
-          # --- Guest Network ---
-          echo "CONFIG_PACKAGE_luci-app-guest-wifi=y" >> .config    # Simplified LuCI interface for guest networks (optional, can be done manually)
-
-          # --- IoT / Device Discovery ---
-          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config           # mDNS/DNS-SD daemon (for Bonjour/Avahi discovery)
-          # If you need the LuCI App for Avahi:
-          # echo "CONFIG_PACKAGE_luci-app-avahi=y" >> .config
-
-          # --- VoIP Support (Basic NAT Helpers) ---
-          # This is complex. These helpers MIGHT be enough, but often aren't. Full VoIP needs more setup.
-          echo "CONFIG_PACKAGE_kmod-nf-nathelper-extra=y" >> .config # Includes SIP and other ALG helpers (sometimes problematic)
-
-          # --- Potential Needs for NAS/RPi Interaction ---
-          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config       # Support for USB storage devices connected to the router
-          echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config           # EXT4 filesystem support (common for Linux)
-          echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config           # FAT32 filesystem support (for compatibility)
-          echo "CONFIG_PACKAGE_block-mount=y" >> .config            # Automounting block devices (like USB drives)
-
-          # --- Diagnostics / Monitoring ---
-          echo "CONFIG_PACKAGE_tcpdump=y" >> .config                # Network packet analyzer (useful for debugging)
-          echo "CONFIG_PACKAGE_iperf3=y" >> .config                 # Network performance testing tool
-          # For more advanced stats:
-          # echo "CONFIG_PACKAGE_luci-app-statistics=y" >> .config    # LuCI statistics interface
-          # echo "CONFIG_PACKAGE_collectd=y" >> .config             # Statistics collection daemon
-          # echo "CONFIG_PACKAGE_collectd-mod-cpu=y" >> .config
-          # echo "CONFIG_PACKAGE_collectd-mod-memory=y" >> .config
-          # echo "CONFIG_PACKAGE_collectd-mod-interface=y" >> .config
-          # echo "CONFIG_PACKAGE_collectd-mod-load=y" >> .config
-          # echo "CONFIG_PACKAGE_collectd-mod-network=y" >> .config
-
-          # --- UPnP (If needed for specific applications/gaming) ---
-          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config          # LuCI interface for UPnP / NAT-PMP
-
-          # --- Final Step ---
-          # Expand the config based on selections and resolve dependencies
           make defconfig
 
       - name: Download toolchain and sources
         run: |
-          make download -j$(nproc) V=s || make download -j1 V=s # Retry download on error with single thread
+          make download -j$(nproc) V=s || make download -j1 V=s
 
       - name: Build firmware
         run: |
-          make -j$(nproc) V=s || make -j1 V=s # Retry build on error with single thread
+          make -j$(nproc) V=s || make -j1 V=s
 
       - name: Upload Firmware Artifact
-        # This step uploads the compiled firmware image(s)
         uses: actions/upload-artifact@v4
         with:
-          name: openwrt-firmware-${{ github.event.inputs.target_device || 'glinet_gl-b3000' }}
-          # Adjust the path glob if needed based on actual output filenames
-          path: bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-*.bin
-          retention-days: 7 # Keep artifact for 7 days (adjust as needed)
+          # Using the input or default name, assuming dev branch builds gl-b3000
+          name: openwrt-firmware-${{ github.event.inputs.target_device || 'glinet_gl-b3000' }}-dev-branch
+          # Check this path matches the output from the dev branch build
+          path: bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*.bin
+          retention-days: 14
