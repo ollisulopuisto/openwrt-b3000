@@ -43,6 +43,15 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
+      # --- ADD THESE LINES BACK ---
+      - name: Force Target Config for GL-B3000
+        run: |
+          echo "CONFIG_TARGET_qualcommax=y" > .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
+          echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_glinet_gl-b3000=y" >> .config
+          # Add any specific CONFIG_PACKAGE lines *if* you suspect the dev branch doesn't include them
+          # Example: echo "CONFIG_PACKAGE_luci=y" >> .config
+
       # --- REMOVED MANUAL CONFIGURATION STEP ---
       # The configuration should come directly from the checked-out dev branch files.
       # Keep 'make defconfig' to finalize the configuration based on the branch.
@@ -64,5 +73,5 @@ jobs:
           # Using the input or default name, assuming dev branch builds gl-b3000
           name: openwrt-firmware-${{ github.event.inputs.target_device || 'glinet_gl-b3000' }}-dev-branch
           # Check this path matches the output from the dev branch build
-          path: bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*.bin
+          path: bin/targets/qualcommax/ipq50xx/*
           retention-days: 14
