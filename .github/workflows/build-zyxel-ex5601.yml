@@ -50,6 +50,10 @@ jobs:
           echo "CONFIG_TARGET_mediatek_filogic=y" >> .config
           echo "CONFIG_TARGET_mediatek_filogic_DEVICE_${{ github.event.inputs.target_device_profile }}=y" >> .config
 
+          # --- EXCLUDE UNNECESSARY/BROKEN VIDEO FEED PACKAGE ---
+          echo "# Explicitly disable xkeyboard-config from video feed" >> .config
+          echo "CONFIG_PACKAGE_xkeyboard-config=n" >> .config
+
           echo "# --- User Requested Packages (ZyXEL EX5601) ---" >> .config
           # --- LuCI Base & Core Apps ---
           echo "CONFIG_PACKAGE_luci=y" >> .config
@@ -93,21 +97,22 @@ jobs:
           echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config     # Ext4 filesystem
           echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config     # FAT32 filesystem
           echo "CONFIG_PACKAGE_block-mount=y" >> .config      # For automounting
-          # Note: USB drivers kmod-usb3, kmod-usb-xhci-hcd should be pulled in by target selection
 
           # --- Diagnostics / Monitoring ---
           echo "CONFIG_PACKAGE_tcpdump=y" >> .config
           echo "CONFIG_PACKAGE_iperf3=y" >> .config
-          # Optional: Add luci-app-statistics + collectd if desired
 
           # --- UPnP ---
           echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config # LuCI for UPnP
 
-          # --- Networking Offloading (Should be included by target, confirm if needed) ---
-          # echo "CONFIG_PACKAGE_kmod-nft-offload=y" >> .config # Usually default for filogic
+          # --- Core Networking (Usually default, included for safety) ---
+          echo "CONFIG_PACKAGE_dnsmasq=y" >> .config
+          echo "CONFIG_PACKAGE_firewall4=y" >> .config
+          echo "CONFIG_PACKAGE_iptables-nft=y" >> .config
+          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config # Or odhcp6c if only client needed
 
           echo "Configuration set."
-
+          
       # Finalize configuration based on the .config file
       - name: Finalize configuration
         run: |
