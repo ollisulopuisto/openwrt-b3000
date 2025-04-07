@@ -53,7 +53,7 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # Force target AND add required packages
+      # Force target AND add required packages with their LuCI counterparts
       - name: Set Target Config and Packages
         run: |
           echo "Setting build configuration..."
@@ -62,61 +62,65 @@ jobs:
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_glinet_gl-b3000=y" >> .config
 
-          echo "# --- User Requested Packages ---" >> .config
-          # --- LuCI Web Interface ---
+          echo "# --- LuCI Base & Core Apps ---" >> .config
           echo "CONFIG_PACKAGE_luci=y" >> .config
           echo "CONFIG_PACKAGE_luci-ssl-openssl=y" >> .config # Using OpenSSL variant
-          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config # Package Manager UI
           echo "CONFIG_PACKAGE_luci-base=y" >> .config
-          echo "CONFIG_DEFAULT_luci-app-firewall=y" >> .config # Essential LuCI component
+          echo "CONFIG_DEFAULT_luci-app-firewall=y" >> .config # Firewall UI (Essential)
 
-          # --- LuCI Themes ---
+          echo "# --- LuCI Themes ---" >> .config
           echo "CONFIG_PACKAGE_luci-theme-bootstrap=y" >> .config # Default theme
           echo "CONFIG_PACKAGE_luci-theme-openwrt-2020=y" >> .config # Alternative
 
-          # --- Basic Utilities ---
+          echo "# --- Basic Utilities ---" >> .config
           echo "CONFIG_PACKAGE_nano=y" >> .config
           echo "CONFIG_PACKAGE_htop=y" >> .config
 
-          # --- SSH / SFTP ---
+          echo "# --- SSH / SFTP ---" >> .config
           echo "CONFIG_PACKAGE_openssh-sftp-server=y" >> .config # Adds SFTP to default Dropbear
 
-          # --- QoS / SQM ---
+          echo "# --- QoS / SQM ---" >> .config
           echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config # LuCI for SQM (REQUIRED)
 
-          # --- VPN (WireGuard) ---
-          echo "CONFIG_PACKAGE_kmod-wireguard=y" >> .config # Kernel module (REQUIRED)
-          echo "CONFIG_PACKAGE_wireguard-tools=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-wireguard=y" >> .config
+          echo "# --- VPN (WireGuard) ---" >> .config
+          echo "CONFIG_PACKAGE_kmod-wireguard=y" >> .config # Kernel module
+          echo "CONFIG_PACKAGE_wireguard-tools=y" >> .config # Userspace tools
+          echo "CONFIG_PACKAGE_luci-app-wireguard=y" >> .config # LuCI for WireGuard (REQUIRED)
 
-          # --- Guest Network ---
-          echo "CONFIG_PACKAGE_luci-app-guest-wifi=y" >> .config # Optional helper
+          echo "# --- Guest Network ---" >> .config
+          # Note: Guest network functionality relies heavily on Wifi drivers/config
+          echo "CONFIG_PACKAGE_luci-app-guest-wifi=y" >> .config # Optional helper UI
 
-          # --- IoT / Device Discovery ---
-          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config # mDNS/Bonjour
+          echo "# --- IoT / Device Discovery ---" >> .config
+          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config # mDNS/Bonjour daemon
+          echo "CONFIG_PACKAGE_luci-app-avahi=y" >> .config # LuCI for Avahi (Optional but useful)
 
-          # --- VoIP Support (Basic NAT Helpers) ---
-          echo "CONFIG_PACKAGE_kmod-nf-nathelper-extra=y" >> .config # Includes SIP ALG
+          echo "# --- VoIP Support (Basic NAT Helpers) ---" >> .config
+          echo "CONFIG_PACKAGE_kmod-nf-nathelper-extra=y" >> .config # Includes SIP ALG (No specific LuCI app for ALG)
 
-          # --- NAS/RPi Interaction & USB ---
-          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config
-          echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config
-          echo "CONFIG_PACKAGE_block-mount=y" >> .config
+          echo "# --- NAS/RPi Interaction & USB ---" >> .config
+          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config # Base USB Storage support
+          echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config     # Ext4 filesystem
+          echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config     # FAT32 filesystem
+          echo "CONFIG_PACKAGE_block-mount=y" >> .config      # For automounting
+          # No specific LuCI app for just mounting, usually handled by block-mount + basic LuCI mount points
 
-          # --- Diagnostics / Monitoring ---
+          echo "# --- Diagnostics / Monitoring ---" >> .config
           echo "CONFIG_PACKAGE_tcpdump=y" >> .config
           echo "CONFIG_PACKAGE_iperf3=y" >> .config
+          # Optional: echo "CONFIG_PACKAGE_luci-app-statistics=y" >> .config # LuCI stats (requires collectd below)
+          # Optional: echo "CONFIG_PACKAGE_collectd=y" >> .config
 
-          # --- UPnP ---
-          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config
+          echo "# --- UPnP ---" >> .config
+          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config # LuCI for UPnP (REQUIRED if UPnP needed)
 
-          # --- Core Networking (Usually default, included for safety) ---
+          echo "# --- Core Networking (Usually default, included for safety) ---" >> .config
           echo "CONFIG_PACKAGE_dnsmasq=y" >> .config
           echo "CONFIG_PACKAGE_firewall4=y" >> .config
           echo "CONFIG_PACKAGE_iptables-nft=y" >> .config
-          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config
+          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config # Or odhcp6c if only client needed
 
           echo "Configuration set."
 
