@@ -152,7 +152,6 @@ jobs:
           name: openwrt-firmware-${{ github.event.inputs.target_device || 'glinet_gl-b3000' }}-fork-upstream
           # Include both .img and .itb files based on previous output
           path: |
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*.img
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*.itb
-          retention-days: 7
+            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*
+          retention-days: 14
           if-no-files-found: warn # Don't fail if only one type exists
