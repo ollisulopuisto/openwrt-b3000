@@ -135,6 +135,6 @@ jobs:
         with:
           name: openwrt-firmware-${{ github.event.inputs.target_device_profile }}-${{ github.event.inputs.openwrt_branch }}
           # Catch both factory and sysupgrade .bin files for this device
-          path: bin/targets/mediatek/filogic/openwrt-mediatek-filogic-${{ github.event.inputs.target_device_profile }}*.bin
-          retention-days: 7
+          path: bin/targets/mediatek/filogic/openwrt-mediatek-filogic-*
+          retention-days: 14
           if-no-files-found: warn # Don't fail if only one type exists
