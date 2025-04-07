@@ -1,166 +1,201 @@
+# Workflow name - visible in GitHub Actions UI
 name: Build OpenWrt Firmware (GL-B3000 from Fork+Upstream)
 
+# Controls when the workflow will run
 on:
+  # Allows manual triggering from the Actions tab
   workflow_dispatch:
     inputs:
+      # Input for the target device profile (pre-filled for convenience)
       target_device:
         description: 'Target Device (usually glinet_gl-b3000)'
         required: false
         default: 'glinet_gl-b3000'
+      # Input for the upstream OpenWrt branch to merge
       upstream_branch:
         description: 'Upstream OpenWrt branch to merge'
         required: true
-        default: 'main'
+        default: 'main' # 'main' is typically the snapshot/development branch
 
+# Default permissions for the GITHUB_TOKEN
 permissions:
   contents: read
 
+# Defines the jobs to be executed
 jobs:
+  # Single job named 'build'
   build:
+    # Name displayed in the Actions UI for this job
     name: Build firmware from Fork + Upstream/${{ github.event.inputs.upstream_branch || 'main' }}
+    # The type of runner that the job will run on
     runs-on: ubuntu-latest
 
+    # Sequence of tasks that make up the job
     steps:
+      # Step 1: Check out the repository code
       - name: Checkout code from fork
         uses: actions/checkout@v4
         with:
-          # No repository or ref specified, checks out the repo/branch the workflow runs from
-          # Fetch full depth to allow merging later
+          # Checks out the code from the repository where the workflow is running
+          # fetch-depth: 0 fetches the entire git history, necessary for merging
           fetch-depth: 0
 
+      # Step 2: Merge the latest upstream changes
       - name: Merge latest OpenWrt upstream branch
         run: |
+          # Configure git user identity for the merge commit (if needed)
           git config --global user.name 'GitHub Action'
           git config --global user.email 'action@github.com'
           echo "Adding upstream remote..."
+          # Add the official OpenWrt repository as a remote named 'upstream'
           git remote add upstream https://github.com/openwrt/openwrt.git
           echo "Fetching upstream ${{ github.event.inputs.upstream_branch }}..."
+          # Fetch the specified branch from the upstream remote
           git fetch upstream ${{ github.event.inputs.upstream_branch }}
           echo "Attempting merge..."
+          # Merge the fetched upstream branch into the current branch
+          # --no-edit prevents git from asking for a commit message
+          # || echo "..." allows the workflow to continue if merge fails (e.g., conflicts or already up-to-date)
           git merge upstream/${{ github.event.inputs.upstream_branch }} --no-edit || echo "Merge conflict or already up-to-date."
           echo "Merge step complete."
 
+      # Step 3: Install required build dependencies on the runner
       - name: Install build dependencies
         run: |
           sudo apt-get update
+          # Install packages needed by the OpenWrt build system
           sudo apt-get install -y build-essential clang flex bison g++ gawk \
           gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev \
           python3-setuptools python3-venv python3-dev rsync unzip zlib1g-dev file wget
 
-      - name: Disable Telephony Feed if it exists
-        run: |
-          echo "Attempting to disable telephony feed in feeds.conf.default..."
-          # Use sed to comment out the line starting with 'src-git telephony'
-          # -i modifies the file in place. Ignore error if the line isn't found.
-          sed -i '/^src-git telephony/s/^/#/' feeds.conf.default || true
-          echo "Current feeds.conf.default content:"
-          cat feeds.conf.default
-
-      # Run feeds update/install *after* the merge
+      # Step 4: Update and install OpenWrt package feeds (run after merge)
       - name: Update and install feeds
         run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      # Force target AND add required packages with their LuCI counterparts
+      # Step 5: Configure the build - Set target, device, and packages
       - name: Set Target Config and Packages
         run: |
           echo "Setting build configuration..."
           # --- Base Target Selection ---
+          # Overwrite .config file with target selection
           echo "CONFIG_TARGET_qualcommax=y" > .config
+          # Append subtarget and device profile
           echo "CONFIG_TARGET_qualcommax_ipq50xx=y" >> .config
           echo "CONFIG_TARGET_qualcommax_ipq50xx_DEVICE_glinet_gl-b3000=y" >> .config
 
-          echo "# --- LuCI Base & Core Apps ---" >> .config
-          echo "CONFIG_PACKAGE_luci=y" >> .config
-          echo "CONFIG_PACKAGE_luci-ssl-openssl=y" >> .config # Using OpenSSL variant
-          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config # Package Manager UI
-          echo "CONFIG_PACKAGE_luci-base=y" >> .config
-          echo "CONFIG_DEFAULT_luci-app-firewall=y" >> .config # Firewall UI (Essential)
+          echo "# --- Essential Board Support (WiFi) ---" >> .config
+          echo "CONFIG_PACKAGE_kmod-ath11k=y" >> .config              # Main ath11k WiFi driver
+          echo "CONFIG_PACKAGE_kmod-ath11k-ahb=y" >> .config          # AHB support for ath11k on IPQ50xx
+          echo "CONFIG_PACKAGE_ipq-wifi-glinet_gl-b3000=y" >> .config # Board-specific WiFi firmware/caldata
 
-          echo "# --- LuCI Themes ---" >> .config
-          echo "CONFIG_PACKAGE_luci-theme-bootstrap=y" >> .config # Default theme
-          echo "CONFIG_PACKAGE_luci-theme-openwrt-2020=y" >> .config # Alternative
+          echo "# --- User Requested Packages ---" >> .config
+          # --- LuCI Base & Core Apps ---
+          echo "CONFIG_PACKAGE_luci=y" >> .config                     # Include LuCI web interface
+          echo "CONFIG_PACKAGE_luci-ssl-openssl=y" >> .config         # Enable HTTPS for LuCI using OpenSSL
+          echo "CONFIG_PACKAGE_luci-app-opkg=y" >> .config            # LuCI Package Manager UI
+          echo "CONFIG_PACKAGE_luci-base=y" >> .config                # Ensure LuCI base files are present
+          echo "CONFIG_DEFAULT_luci-app-firewall=y" >> .config        # Firewall UI (Essential)
 
-          echo "# --- Basic Utilities ---" >> .config
-          echo "CONFIG_PACKAGE_nano=y" >> .config
-          echo "CONFIG_PACKAGE_htop=y" >> .config
+          # --- LuCI Themes ---
+          echo "CONFIG_PACKAGE_luci-theme-bootstrap=y" >> .config     # Default theme (good fallback)
+          echo "CONFIG_PACKAGE_luci-theme-openwrt-2020=y" >> .config  # Popular alternative theme
 
-          echo "# --- SSH / SFTP ---" >> .config
-          echo "CONFIG_PACKAGE_openssh-sftp-server=y" >> .config # Adds SFTP to default Dropbear
+          # --- Basic Utilities ---
+          echo "CONFIG_PACKAGE_nano=y" >> .config                     # Nano text editor
+          echo "CONFIG_PACKAGE_htop=y" >> .config                     # Process viewer
 
-          echo "# --- QoS / SQM ---" >> .config
-          echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config # LuCI for SQM (REQUIRED)
+          # --- SSH / SFTP ---
+          echo "CONFIG_PACKAGE_openssh-sftp-server=y" >> .config      # Adds SFTP capability to the default SSH server (Dropbear)
 
-          echo "# --- VPN (WireGuard) ---" >> .config
-          echo "CONFIG_PACKAGE_kmod-wireguard=y" >> .config # Kernel module
-          echo "CONFIG_PACKAGE_wireguard-tools=y" >> .config # Userspace tools
-          echo "CONFIG_PACKAGE_luci-app-wireguard=y" >> .config # LuCI for WireGuard (REQUIRED)
+          # --- QoS / SQM ---
+          echo "CONFIG_PACKAGE_sqm-scripts=y" >> .config              # Smart Queue Management scripts
+          echo "CONFIG_PACKAGE_luci-app-sqm=y" >> .config             # LuCI UI for SQM
 
-          echo "# --- Guest Network ---" >> .config
-          # Note: Guest network functionality relies heavily on Wifi drivers/config
-          echo "CONFIG_PACKAGE_luci-app-guest-wifi=y" >> .config # Optional helper UI
+          # --- VPN (WireGuard) ---
+          echo "CONFIG_PACKAGE_kmod-wireguard=y" >> .config           # WireGuard Kernel module (MUST be built-in)
+          echo "CONFIG_PACKAGE_wireguard-tools=y" >> .config          # WireGuard userspace utilities
+          echo "CONFIG_PACKAGE_luci-app-wireguard=y" >> .config       # LuCI UI for WireGuard
 
-          echo "# --- IoT / Device Discovery ---" >> .config
-          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config # mDNS/Bonjour daemon
-          echo "CONFIG_PACKAGE_luci-app-avahi=y" >> .config # LuCI for Avahi (Optional but useful)
+          # --- Guest Network ---
+          echo "CONFIG_PACKAGE_luci-app-guest-wifi=y" >> .config      # Optional helper UI for guest WLANs
 
-          echo "# --- VoIP Support (Basic NAT Helpers) ---" >> .config
-          echo "CONFIG_PACKAGE_kmod-nf-nathelper-extra=y" >> .config # Includes SIP ALG (No specific LuCI app for ALG)
+          # --- IoT / Device Discovery ---
+          echo "CONFIG_PACKAGE_avahi-daemon=y" >> .config             # mDNS/Bonjour daemon for local discovery
+          echo "CONFIG_PACKAGE_luci-app-avahi=y" >> .config           # LuCI UI for Avahi
 
-          echo "# --- NAS/RPi Interaction & USB ---" >> .config
-          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config # Base USB Storage support
-          echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config     # Ext4 filesystem
-          echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config     # FAT32 filesystem
-          echo "CONFIG_PACKAGE_block-mount=y" >> .config      # For automounting
-          # No specific LuCI app for just mounting, usually handled by block-mount + basic LuCI mount points
+          # --- VoIP Support (Basic NAT Helpers - Full VoIP unsupported on target) ---
+          echo "CONFIG_PACKAGE_kmod-nf-nathelper-extra=y" >> .config  # Includes SIP ALG (Application Layer Gateway)
 
-          echo "# --- Diagnostics / Monitoring ---" >> .config
-          echo "CONFIG_PACKAGE_tcpdump=y" >> .config
-          echo "CONFIG_PACKAGE_iperf3=y" >> .config
-          # Optional: echo "CONFIG_PACKAGE_luci-app-statistics=y" >> .config # LuCI stats (requires collectd below)
-          # Optional: echo "CONFIG_PACKAGE_collectd=y" >> .config
+          # --- USB Support & Filesystems ---
+          echo "CONFIG_PACKAGE_kmod-usb-storage=y" >> .config         # Kernel module for USB Mass Storage
+          echo "CONFIG_PACKAGE_kmod-fs-ext4=y" >> .config             # EXT4 filesystem support
+          echo "CONFIG_PACKAGE_kmod-fs-vfat=y" >> .config             # FAT32 filesystem support
+          echo "CONFIG_PACKAGE_block-mount=y" >> .config              # Utility for automounting block devices
 
-          echo "# --- UPnP ---" >> .config
-          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config # LuCI for UPnP (REQUIRED if UPnP needed)
+          # --- Diagnostics / Monitoring ---
+          echo "CONFIG_PACKAGE_tcpdump=y" >> .config                  # Network packet capture tool
+          echo "CONFIG_PACKAGE_iperf3=y" >> .config                   # Network performance testing tool
 
-          echo "# --- Core Networking (Usually default, included for safety) ---" >> .config
-          echo "CONFIG_PACKAGE_dnsmasq=y" >> .config
-          echo "CONFIG_PACKAGE_firewall4=y" >> .config
-          echo "CONFIG_PACKAGE_iptables-nft=y" >> .config
-          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config # Or odhcp6c if only client needed
+          # --- UPnP ---
+          echo "CONFIG_PACKAGE_luci-app-upnp=y" >> .config            # LuCI UI for UPnP/NAT-PMP
+
+          # --- Core Networking Components (Usually default, good to ensure) ---
+          echo "CONFIG_PACKAGE_dnsmasq=y" >> .config                  # DHCP and DNS server
+          echo "CONFIG_PACKAGE_firewall4=y" >> .config                # NFTables-based firewall
+          echo "CONFIG_PACKAGE_iptables-nft=y" >> .config             # iptables compatibility for nftables
+          echo "CONFIG_PACKAGE_odhcpd-ipv6only=y" >> .config          # IPv6 DHCP/RA server
+
+          # --- Offloading (Should be pulled in by target/firewall, confirm if issues) ---
+          # echo "CONFIG_PACKAGE_kmod-nft-offload=y" >> .config      # Kernel offload support
+          # echo "CONFIG_PACKAGE_kmod-qca-nss-dp=y" >> .config       # Qualcomm NSS Datapath acceleration (if applicable/stable)
 
           echo "Configuration set."
 
-      # Finalize configuration based on the .config file
+      # Step 6: Finalize .config file based on selections and dependencies
       - name: Finalize configuration
         run: |
+          # Reads the .config file and generates the final build configuration,
+          # resolving dependencies and setting defaults.
           make defconfig
 
+      # Step 7: Download toolchain and source code for packages
       - name: Download toolchain and sources
         run: |
+          # Use nproc to get number of CPU cores for parallel download
+          # Retry with single job (-j1) if parallel download fails
           make download -j$(nproc) V=s || make download -j1 V=s
 
+      # Step 8: Compile the firmware
       - name: Build firmware
         run: |
-          # Use V=s for detailed output, adjust -j jobs if needed
+          # V=s enables verbose build output
+          # -j$(nproc) uses multiple cores for faster compilation
+          # Retry with single job (-j1) if parallel build fails
           make -j$(nproc) V=s || make -j1 V=s
 
-      # Optional debug step
+      # Step 9: (Optional Debug) List the files generated in the target directory
       - name: List Build Output Files
         run: |
           echo "Listing contents of bin/targets/qualcommax/ipq50xx/"
+          # Use ls -lR for recursive listing with details
           ls -lR bin/targets/qualcommax/ipq50xx/
+        # Don't fail the workflow if this step has an error (e.g., directory not found)
         continue-on-error: true
 
-      # Upload the final firmware images
+      # Step 10: Upload the generated firmware images as build artifacts
       - name: Upload Firmware Artifact
         uses: actions/upload-artifact@v4
         with:
+          # Name of the artifact zip file
           name: openwrt-firmware-${{ github.event.inputs.target_device || 'glinet_gl-b3000' }}-fork-upstream
-          # Include both .img and .itb files based on previous output
+          # Paths to the files to include in the artifact
+          # Uses multi-line syntax to include multiple patterns
           path: |
-            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*
-          retention-days: 14
-          if-no-files-found: warn # Don't fail if only one type exists
+            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*.img
+            bin/targets/qualcommax/ipq50xx/openwrt-qualcommax-ipq50xx-glinet_gl-b3000-*.itb
+          # How long to keep the artifact (in days)
+          retention-days: 7
+          # What to do if no files match the path patterns ('warn', 'error', or 'ignore')
+          if-no-files-found: warn
